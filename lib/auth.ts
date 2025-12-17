@@ -1,5 +1,6 @@
 // lib/auth.ts
 import { betterAuth } from "better-auth";
+import { admin } from "better-auth/plugins"; // добавляем импорт админ плагина
 import { Pool } from "pg";
 import { Kysely, PostgresDialect } from "kysely";
 
@@ -27,4 +28,12 @@ export const auth = betterAuth({
     expiresIn: 60 * 60 * 24 * 7,
     updateAge: 60 * 60 * 24,
   },
+
+  // добавляем плагин admin
+  plugins: [
+    admin({
+      defaultRole: "user",        // роль по умолчанию для новых пользователей
+      adminRoles: ["admin"],      // роли с полными правами админа
+    })
+  ],
 });

@@ -5,6 +5,11 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
+// 🔴 ВАЖНО: тот же список что и в других файлах!
+const ADMIN_EMAILS = process.env.NEXT_PUBLIC_ADMIN_EMAILS 
+  ? process.env.NEXT_PUBLIC_ADMIN_EMAILS.split(',').map(e => e.trim().toLowerCase())
+  : ['admin@example.com'];
+
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -18,78 +23,104 @@ export default function LoginPage() {
     setError('');
 
     try {
-      console.log('Sending login request...');
+      console.log('🔐 Отправка запроса на вход для:', email);
       
-      // Пробуем оба пути, так как в зависимости от версии Better-auth может быть разный путь
+      // 🔴 КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: используем callbackURL на страницу проверки роли
+      const requestBody = {
+        email,
+        password,
+        callbackURL: '/auth/redirect' // Перенаправляем на страницу проверки роли
+      };
+
+      console.log('📤 Тело запроса:', requestBody);
+
+      // Пробуем оба возможных пути Better-auth
       const pathsToTry = [
         '/api/auth/sign-in/email',
         '/api/auth/signin/email'
       ];
 
       let response;
-      let lastError;
+      let responseData;
 
       for (const path of pathsToTry) {
         try {
-          console.log(`Trying path: ${path}`);
+          console.log(`🔄 Пробуем путь: ${path}`);
           response = await fetch(path, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-              email,
-              password,
-              callbackURL: '/dashboard', // указываем куда редиректить после входа
-            }),
+            body: JSON.stringify(requestBody),
+            credentials: 'include' // Важно для cookies
           });
           
+          console.log(`📥 Ответ от ${path}: статус ${response.status}`);
+          
           if (response.status !== 404) {
+            const text = await response.text();
+            console.log(`📄 Ответ текст:`, text);
+            
+            if (text) {
+              try {
+                responseData = JSON.parse(text);
+                console.log(`✅ JSON парсинг успешен:`, responseData);
+              } catch (parseError) {
+                console.log(`❌ Ответ не JSON`);
+                responseData = { message: text };
+              }
+            }
             break; // если путь работает, выходим из цикла
           }
         } catch (err) {
-          lastError = err;
+          console.log(`❌ Ошибка пути ${path}:`, err);
         }
       }
 
       if (!response) {
-        throw new Error('Все пути аутентификации не работают');
-      }
-
-      console.log('Response status:', response.status);
-      
-      const responseText = await response.text();
-      console.log('Response text:', responseText);
-
-      let data;
-      if (responseText) {
-        try {
-          data = JSON.parse(responseText);
-          console.log('Parsed data:', data);
-        } catch (parseError) {
-          console.log('Response is not JSON');
-        }
+        throw new Error('Все пути аутентификации не работают. Проверьте настройки Better-auth.');
       }
 
       if (response.ok) {
-        console.log('✅ Login successful, redirecting to dashboard...');
+        console.log('✅ Вход успешен!');
+        console.log('📊 Данные ответа:', responseData);
         
-        // Ждем немного перед редиректом, чтобы сессия установилась
-        setTimeout(() => {
-          router.push('/dashboard');
-          router.refresh(); // обновляем данные приложения
-        }, 500);
+        // 🔴 ПРОВЕРЯЕМ РОЛЬ ПОЛЬЗОВАТЕЛЯ СРАЗУ ПОСЛЕ ВХОДА
+        const userEmail = email.toLowerCase();
+        const isAdmin = ADMIN_EMAILS.includes(userEmail);
+        
+        console.log(`👤 Email пользователя: ${userEmail}`);
+        console.log(`👑 Админ emails: ${ADMIN_EMAILS}`);
+        console.log(`🔐 Является админом: ${isAdmin}`);
+        
+        if (isAdmin) {
+          console.log(`🚀 ${userEmail} - АДМИН! Редирект в админ-панель...`);
+          // Даем время для установки сессии
+          setTimeout(() => {
+            router.push('/admin');
+            router.refresh();
+          }, 300);
+        } else {
+          console.log(`👤 ${userEmail} - обычный пользователь. Редирект в кабинет...`);
+          setTimeout(() => {
+            router.push('/dashboard');
+            router.refresh();
+          }, 300);
+        }
         
       } else {
-        const errorMsg = data?.error?.message || 
-                        data?.message || 
-                        data?.error ||
+        const errorMsg = responseData?.error?.message || 
+                        responseData?.message || 
+                        responseData?.error ||
                         `Ошибка входа (${response.status})`;
-        console.log('❌ Login error:', errorMsg);
+        
+        console.log('❌ Ошибка входа:', errorMsg);
+        console.log('📄 Полный ответ:', responseData);
+        
         setError(errorMsg);
       }
     } catch (err: any) {
-      console.error('❌ Login catch error:', err);
+      console.error('🔥 Неожиданная ошибка:', err);
       setError(err.message || 'Ошибка сервера. Попробуйте снова.');
     } finally {
       setLoading(false);
@@ -120,7 +151,7 @@ export default function LoginPage() {
             color: '#1f2937',
             marginBottom: '8px'
           }}>
-            🔐 Вход в аккаунт
+            🔐 Вход в систему
           </h1>
           <p style={{
             color: '#6b7280',
@@ -171,18 +202,15 @@ export default function LoginPage() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="ваш@email.com"
+              placeholder="admin@example.com"
               style={{
                 width: '100%',
                 padding: '12px',
                 border: '1px solid #d1d5db',
                 borderRadius: '8px',
                 fontSize: '16px',
-                boxSizing: 'border-box',
-                transition: 'border-color 0.2s'
+                boxSizing: 'border-box'
               }}
-              onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
-              onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
             />
           </div>
 
@@ -208,11 +236,8 @@ export default function LoginPage() {
                 border: '1px solid #d1d5db',
                 borderRadius: '8px',
                 fontSize: '16px',
-                boxSizing: 'border-box',
-                transition: 'border-color 0.2s'
+                boxSizing: 'border-box'
               }}
-              onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
-              onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
             />
           </div>
 
@@ -229,14 +254,7 @@ export default function LoginPage() {
               fontSize: '16px',
               fontWeight: '600',
               cursor: loading ? 'not-allowed' : 'pointer',
-              transition: 'background-color 0.2s',
               marginBottom: '20px'
-            }}
-            onMouseOver={(e) => {
-              if (!loading) e.currentTarget.style.backgroundColor = '#2563eb';
-            }}
-            onMouseOut={(e) => {
-              if (!loading) e.currentTarget.style.backgroundColor = '#3b82f6';
             }}
           >
             {loading ? 'Вход...' : 'Войти'}
@@ -259,8 +277,52 @@ export default function LoginPage() {
           </div>
         </form>
 
+        {/* Информация для администраторов */}
         <div style={{
           marginTop: '30px',
+          padding: '20px',
+          backgroundColor: '#f0f9ff',
+          borderRadius: '8px',
+          border: '1px solid #bae6fd'  // ИСПРАВЛЕНО: закрытая строка
+        }}>
+          <h3 style={{
+            fontSize: '16px',
+            fontWeight: '600',
+            color: '#0369a1',
+            marginBottom: '10px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            👑 Для администраторов
+          </h3>
+          
+          <div style={{ fontSize: '13px', color: '#64748b' }}>
+            <p style={{ marginBottom: '8px' }}>
+              <strong>Администраторы системы:</strong>
+            </p>
+            {ADMIN_EMAILS.map((adminEmail, index) => (
+              <div key={index} style={{
+                backgroundColor: 'white',
+                padding: '8px 12px',
+                borderRadius: '6px',
+                marginBottom: '6px',
+                border: '1px solid #bae6fd',  // ИСПРАВЛЕНО: закрытая строка
+                fontFamily: 'monospace',
+                fontSize: '12px'
+              }}>
+                {adminEmail}
+              </div>
+            ))}
+            <p style={{ marginTop: '12px', fontSize: '12px' }}>
+              При входе под этими email вы будете перенаправлены в админ-панель.
+            </p>
+          </div>
+        </div>
+
+        {/* Тестовые данные */}
+        <div style={{
+          marginTop: '20px',
           padding: '16px',
           backgroundColor: '#f3f4f6',
           borderRadius: '8px',
@@ -270,9 +332,26 @@ export default function LoginPage() {
         }}>
           <p style={{ margin: 0 }}>
             <strong>Тестовые данные:</strong><br />
-            Email: <strong>test@example.com</strong><br />
-            Пароль: <strong>password123</strong>
+            <span style={{ fontFamily: 'monospace' }}>
+              Email: admin@example.com<br />
+              Пароль: Admin123!
+            </span>
           </p>
+        </div>
+
+        {/* Ссылка на отладку */}
+        <div style={{ marginTop: '20px', textAlign: 'center' }}>
+          <Link 
+            href="/debug-auth" 
+            style={{
+              color: '#8b5cf6',
+              fontSize: '12px',
+              textDecoration: 'none',
+              fontFamily: 'monospace'
+            }}
+          >
+            🐞 /debug-auth (проверить сессию)
+          </Link>
         </div>
       </div>
     </div>
