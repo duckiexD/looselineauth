@@ -1,4 +1,3 @@
-// app/register/page.tsx
 'use client';
 
 import { useState, FormEvent } from "react";
@@ -6,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 export default function RegisterPage() {
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -26,8 +26,14 @@ export default function RegisterPage() {
       return;
     }
 
+    if (password.length < 6) {
+      setError("Пароль должен быть не менее 6 символов");
+      setLoading(false);
+      return;
+    }
+
     try {
-      const response = await fetch("/api/auth/signup/email", {
+      const response = await fetch("/api/auth/sign-up/email", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -35,22 +41,30 @@ export default function RegisterPage() {
         body: JSON.stringify({
           email,
           password,
-          name: email.split("@")[0],
+          name: name || email.split("@")[0],
         }),
       });
 
       const data = await response.json();
 
+      console.log("Response:", response.status, data);
+
       if (response.ok) {
-        setSuccess("Регистрация успешна! Теперь вы можете войти.");
+        setSuccess("Регистрация успешна! Перенаправляем на вход...");
         setTimeout(() => {
           router.push("/login");
-        }, 2000);
+        }, 1500);
       } else {
-        setError(data.message || "Ошибка регистрации");
+        // Обработка ошибок Better-auth
+        const errorMessage = data.error?.message || 
+                            data.message || 
+                            data.error || 
+                            "Ошибка регистрации";
+        setError(errorMessage);
       }
-    } catch (err) {
-      setError("Ошибка сети");
+    } catch (err: any) {
+      console.error("Registration error:", err);
+      setError(err.message || "Ошибка сети");
     } finally {
       setLoading(false);
     }
@@ -139,7 +153,33 @@ export default function RegisterPage() {
               color: "#374151",
               marginBottom: "6px"
             }}>
-              Email адрес
+              Имя (опционально)
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Ваше имя"
+              style={{
+                width: "100%",
+                padding: "12px",
+                border: "1px solid #d1d5db",
+                borderRadius: "8px",
+                fontSize: "16px",
+                boxSizing: "border-box"
+              }}
+            />
+          </div>
+
+          <div style={{ marginBottom: "20px" }}>
+            <label style={{
+              display: "block",
+              fontSize: "14px",
+              fontWeight: "500",
+              color: "#374151",
+              marginBottom: "6px"
+            }}>
+              Email адрес *
             </label>
             <input
               type="email"
@@ -166,7 +206,7 @@ export default function RegisterPage() {
               color: "#374151",
               marginBottom: "6px"
             }}>
-              Пароль
+              Пароль * (мин. 6 символов)
             </label>
             <input
               type="password"
@@ -193,7 +233,7 @@ export default function RegisterPage() {
               color: "#374151",
               marginBottom: "6px"
             }}>
-              Подтвердите пароль
+              Подтвердите пароль *
             </label>
             <input
               type="password"
@@ -218,31 +258,39 @@ export default function RegisterPage() {
             style={{
               width: "100%",
               padding: "14px",
-              backgroundColor: loading ? "#9ca3af" : "#10b981",
+              backgroundColor: loading ? "#9ca3af" : "#3b82f6",
               color: "white",
               border: "none",
               borderRadius: "8px",
               fontSize: "16px",
               fontWeight: "600",
               cursor: loading ? "not-allowed" : "pointer",
-              marginBottom: "20px"
+              marginBottom: "20px",
+              transition: "background-color 0.2s"
+            }}
+            onMouseEnter={(e) => {
+              if (!loading) e.currentTarget.style.backgroundColor = "#2563eb";
+            }}
+            onMouseLeave={(e) => {
+              if (!loading) e.currentTarget.style.backgroundColor = "#3b82f6";
             }}
           >
             {loading ? "Регистрация..." : "Зарегистрироваться"}
           </button>
 
-          <div style={{ textAlign: "center", marginTop: "20px" }}>
+          <div style={{ textAlign: "center" }}>
             <Link 
-              href="/" 
+              href="/login" 
               style={{
                 color: "#6b7280",
                 fontSize: "14px",
                 textDecoration: "none",
                 display: "inline-flex",
-                alignItems: "center"
+                alignItems: "center",
+                gap: "4px"
               }}
             >
-              ← На главную
+              Уже есть аккаунт? <span style={{ color: "#3b82f6" }}>Войти</span>
             </Link>
           </div>
         </form>

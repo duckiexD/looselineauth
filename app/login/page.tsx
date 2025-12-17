@@ -18,28 +18,79 @@ export default function LoginPage() {
     setError('');
 
     try {
-      const response = await fetch('/api/auth/signin/email', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email,
-          password,
-        }),
-      });
+      console.log('Sending login request...');
+      
+      // Пробуем оба пути, так как в зависимости от версии Better-auth может быть разный путь
+      const pathsToTry = [
+        '/api/auth/sign-in/email',
+        '/api/auth/signin/email'
+      ];
 
-      const data = await response.json();
+      let response;
+      let lastError;
+
+      for (const path of pathsToTry) {
+        try {
+          console.log(`Trying path: ${path}`);
+          response = await fetch(path, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              email,
+              password,
+              callbackURL: '/dashboard', // указываем куда редиректить после входа
+            }),
+          });
+          
+          if (response.status !== 404) {
+            break; // если путь работает, выходим из цикла
+          }
+        } catch (err) {
+          lastError = err;
+        }
+      }
+
+      if (!response) {
+        throw new Error('Все пути аутентификации не работают');
+      }
+
+      console.log('Response status:', response.status);
+      
+      const responseText = await response.text();
+      console.log('Response text:', responseText);
+
+      let data;
+      if (responseText) {
+        try {
+          data = JSON.parse(responseText);
+          console.log('Parsed data:', data);
+        } catch (parseError) {
+          console.log('Response is not JSON');
+        }
+      }
 
       if (response.ok) {
-        router.push('/');
-        router.refresh();
+        console.log('✅ Login successful, redirecting to dashboard...');
+        
+        // Ждем немного перед редиректом, чтобы сессия установилась
+        setTimeout(() => {
+          router.push('/dashboard');
+          router.refresh(); // обновляем данные приложения
+        }, 500);
+        
       } else {
-        setError(data.message || 'Ошибка входа. Проверьте email и пароль.');
+        const errorMsg = data?.error?.message || 
+                        data?.message || 
+                        data?.error ||
+                        `Ошибка входа (${response.status})`;
+        console.log('❌ Login error:', errorMsg);
+        setError(errorMsg);
       }
-    } catch (err) {
-      setError('Ошибка сети. Попробуйте снова.');
-      console.error(err);
+    } catch (err: any) {
+      console.error('❌ Login catch error:', err);
+      setError(err.message || 'Ошибка сервера. Попробуйте снова.');
     } finally {
       setLoading(false);
     }
@@ -191,7 +242,7 @@ export default function LoginPage() {
             {loading ? 'Вход...' : 'Войти'}
           </button>
 
-          <div style={{ textAlign: 'center', marginTop: '20px' }}>
+          <div style={{ textAlign: 'center' }}>
             <Link 
               href="/" 
               style={{
@@ -199,10 +250,11 @@ export default function LoginPage() {
                 fontSize: '14px',
                 textDecoration: 'none',
                 display: 'inline-flex',
-                alignItems: 'center'
+                alignItems: 'center',
+                gap: '4px'
               }}
             >
-              ← На главную
+              ← Вернуться на главную
             </Link>
           </div>
         </form>
@@ -217,8 +269,8 @@ export default function LoginPage() {
           textAlign: 'center'
         }}>
           <p style={{ margin: 0 }}>
-            Для теста можно использовать:<br/>
-            Email: <strong>test@example.com</strong><br/>
+            <strong>Тестовые данные:</strong><br />
+            Email: <strong>test@example.com</strong><br />
             Пароль: <strong>password123</strong>
           </p>
         </div>
