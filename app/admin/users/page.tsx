@@ -1,119 +1,369 @@
-"use client";
+// app/admin/page.tsx - СЕРВЕРНЫЙ КОМПОНЕНТ
+import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/card';
+import { Users, CreditCard, Activity, UserCheck, Clock, TrendingUp, Shield, AlertCircle } from 'lucide-react';
+import { db } from '@/lib/db';
+import Link from 'next/link';
 
-import { useEffect, useState } from "react";
-import { authClient } from "@/lib/auth-client";
-
-type User = {
-  id: string;
-  email: string | null;
-  role: string;
-  banned: boolean;
+// Компонент для статистики
+type StatCardProps = {
+  title: string;
+  value: string | number;
+  icon: React.ComponentType<{ className?: string }>;
+  description?: string;
+  trend?: string;
+  link?: string;
 };
 
-export default function AdminUsersPage() {
-  const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
+const StatCard = ({ title, value, icon: Icon, description, trend, link }: StatCardProps) => {
+  const content = (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-sm font-medium">
+          {title}
+        </CardTitle>
+        <Icon className="h-4 w-4 text-muted-foreground" />
+      </CardHeader>
+      <CardContent>
+        <div className="text-2xl font-bold">{value}</div>
+        {description && (
+          <p className="text-xs text-muted-foreground">
+            {description}
+            {trend && <span className="text-green-600 ml-1">{trend}</span>}
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        // listUsers ожидает объект с полем query
-        const res = await authClient.admin.listUsers({
-          query: {
-            // все поля внутри query опциональные, поэтому оставляем пустым объектом
-            // при необходимости можно указать limit, offset, searchValue и т.д.
-          },
-        });
+  if (link) {
+    return (
+      <Link href={link}>
+        {content}
+      </Link>
+    );
+  }
 
-        if (!res.error && res.data) {
-          setUsers(res.data.users as User[]);
-        }
-      } finally {
-        setLoading(false);
-      }
+  return content;
+};
+
+// Функция для получения данных дашборда
+async function getDashboardData() {
+  try {
+    // 1. Всего пользователей
+    const totalUsers = await db
+      .selectFrom('user')
+      .select(db.fn.countAll().as('count'))
+      .executeTakeFirst();
+
+    // 2. Активных пользователей (не забаненные)
+    const activeUsers = await db
+      .selectFrom('user')
+      .select(db.fn.countAll().as('count'))
+      .where('banned', '=', false)
+      .executeTakeFirst();
+
+    // 3. Забаненных пользователей
+    const bannedUsers = await db
+      .selectFrom('user')
+      .select(db.fn.countAll().as('count'))
+      .where('banned', '=', true)
+      .executeTakeFirst();
+
+    // 4. Администраторов
+    const adminUsers = await db
+      .selectFrom('user')
+      .select(db.fn.countAll().as('count'))
+      .where('role', '=', 'admin')
+      .executeTakeFirst();
+
+    // 5. Активных сессий (не истекшие)
+    const activeSessions = await db
+      .selectFrom('session')
+      .select(db.fn.countAll().as('count'))
+      .where('expiresAt', '>', new Date())
+      .executeTakeFirst();
+
+    // 6. Подключенные аккаунты (OAuth)
+    const oauthAccounts = await db
+      .selectFrom('account')
+      .select(db.fn.countAll().as('count'))
+      .where('providerId', '!=', 'email')
+      .executeTakeFirst();
+
+    // 7. Последние 5 пользователей
+    const recentUsers = await db
+      .selectFrom('user')
+      .select(['id', 'name', 'email', 'createdAt', 'role', 'banned'])
+      .orderBy('createdAt', 'desc')
+      .limit(5)
+      .execute();
+
+    // 8. Пользователей по ролям
+    const usersByRole = await db
+      .selectFrom('user')
+      .select(['role', db.fn.countAll().as('count')])
+      .groupBy('role')
+      .execute();
+
+    // 9. Регистрации за последние 7 дней
+    const lastWeek = new Date();
+    lastWeek.setDate(lastWeek.getDate() - 7);
+    
+    const recentRegistrations = await db
+      .selectFrom('user')
+      .select(db.fn.countAll().as('count'))
+      .where('createdAt', '>', lastWeek)
+      .executeTakeFirst();
+
+    return {
+      totalUsers: Number(totalUsers?.count) || 0,
+      activeUsers: Number(activeUsers?.count) || 0,
+      bannedUsers: Number(bannedUsers?.count) || 0,
+      adminUsers: Number(adminUsers?.count) || 0,
+      activeSessions: Number(activeSessions?.count) || 0,
+      oauthAccounts: Number(oauthAccounts?.count) || 0,
+      recentUsers,
+      usersByRole: usersByRole.map(row => ({
+        role: row.role || 'user',
+        count: Number(row.count)
+      })),
+      recentRegistrations: Number(recentRegistrations?.count) || 0,
     };
+  } catch (error) {
+    console.error('Error fetching dashboard data:', error);
+    return {
+      totalUsers: 0,
+      activeUsers: 0,
+      bannedUsers: 0,
+      adminUsers: 0,
+      activeSessions: 0,
+      oauthAccounts: 0,
+      recentUsers: [],
+      usersByRole: [],
+      recentRegistrations: 0,
+    };
+  }
+}
 
-    load();
-  }, []);
+export default async function DashboardPage() {
+  const data = await getDashboardData();
 
-  if (loading) return <div>Загрузка пользователей…</div>;
+  // Основные статистики
+  const mainStats = [
+    { 
+      title: 'Всего пользователей', 
+      icon: Users, 
+      value: data.totalUsers,
+      description: `${data.recentRegistrations} за 7 дней`,
+      link: '/admin/users'
+    },
+    { 
+      title: 'Активные пользователи', 
+      icon: UserCheck, 
+      value: data.activeUsers,
+      description: `${data.bannedUsers} забанены`,
+      link: '/admin/users?filter=active'
+    },
+    { 
+      title: 'Администраторы', 
+      icon: Shield, 
+      value: data.adminUsers,
+      description: 'Управление системой',
+      link: '/admin/users?role=admin'
+    },
+    { 
+      title: 'Активных сессий', 
+      icon: Activity, 
+      value: data.activeSessions,
+      description: 'Сейчас онлайн'
+    },
+  ];
+
+  // Второстепенные статистики
+  const secondaryStats = [
+    { 
+      title: 'OAuth аккаунтов', 
+      icon: CreditCard, 
+      value: data.oauthAccounts,
+      description: 'Внешние авторизации'
+    },
+    { 
+      title: 'Новых регистраций', 
+      icon: TrendingUp, 
+      value: data.recentRegistrations,
+      description: 'За 7 дней',
+      trend: '+12%'
+    },
+    { 
+      title: 'Забанено', 
+      icon: AlertCircle, 
+      value: data.bannedUsers,
+      description: 'Пользователей',
+      link: '/admin/users?banned=true'
+    },
+    { 
+      title: 'Всего ролей', 
+      icon: Clock, 
+      value: data.usersByRole.length,
+      description: 'Разных категорий'
+    },
+  ];
 
   return (
-    <div>
-      <h1 className="text-2xl font-semibold mb-4">Пользователи</h1>
-      <table className="w-full border-collapse text-sm">
-        <thead>
-          <tr>
-            <th className="border px-2 py-1">Email</th>
-            <th className="border px-2 py-1">Роль</th>
-            <th className="border px-2 py-1">Статус</th>
-            <th className="border px-2 py-1">Действия</th>
-          </tr>
-        </thead>
-        <tbody>
-          {users.map((u) => (
-            <tr key={u.id}>
-              <td className="border px-2 py-1">{u.email}</td>
-              <td className="border px-2 py-1">{u.role}</td>
-              <td className="border px-2 py-1">
-                {u.banned ? "Заблокирован" : "Активен"}
-              </td>
-              <td className="border px-2 py-1 space-x-2">
-                {/* Переключение роли */}
-                <button
-                  className="text-blue-600 underline"
-                  onClick={async () => {
-                    const newRole = u.role === "admin" ? "user" : "admin";
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold">Дашборд администратора</h1>
+        <div className="text-sm text-muted-foreground">
+          Обновлено: {new Date().toLocaleTimeString('ru-RU')}
+        </div>
+      </div>
+      
+      {/* Основная статистика */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {mainStats.map((stat) => (
+          <StatCard 
+            key={stat.title}
+            {...stat}
+          />
+        ))}
+      </div>
 
-                    await authClient.admin.setRole({
-                      userId: u.id,
-                      role: newRole,
-                    });
+      {/* Вторичная статистика */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {secondaryStats.map((stat) => (
+          <StatCard 
+            key={stat.title}
+            {...stat}
+          />
+        ))}
+      </div>
 
-                    setUsers((prev) =>
-                      prev.map((x) =>
-                        x.id === u.id ? { ...x, role: newRole } : x,
-                      ),
-                    );
-                  }}
-                >
-                  Перекл. роль
-                </button>
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {/* Распределение по ролям */}
+        <Card className="md:col-span-1">
+          <CardHeader>
+            <CardTitle>Распределение по ролям</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {data.usersByRole.length > 0 ? (
+              <div className="space-y-3">
+                {data.usersByRole.map(({ role, count }) => {
+                  const percentage = data.totalUsers > 0 
+                    ? Math.round((count / data.totalUsers) * 100) 
+                    : 0;
+                  
+                  return (
+                    <div key={role} className="space-y-1">
+                      <div className="flex justify-between text-sm">
+                        <span className="font-medium capitalize">{role}</span>
+                        <span className="text-muted-foreground">{count} ({percentage}%)</span>
+                      </div>
+                      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full rounded-full ${
+                            role === 'admin' ? 'bg-red-500' :
+                            role === 'moderator' ? 'bg-yellow-500' : 'bg-blue-500'
+                          }`}
+                          style={{ width: `${percentage}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="h-[150px] flex items-center justify-center text-muted-foreground">
+                Нет данных о ролях
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-                {/* Бан / разбан */}
-                <button
-                  className="text-red-600 underline"
-                  onClick={async () => {
-                    if (u.banned) {
-                      // Разбан
-                      await authClient.admin.unbanUser({ userId: u.id });
-                      setUsers((prev) =>
-                        prev.map((x) =>
-                          x.id === u.id ? { ...x, banned: false } : x,
-                        ),
-                      );
-                    } else {
-                      // Бан
-                      await authClient.admin.banUser({
-                        userId: u.id,
-                        banReason: "Заблокирован администратором",
-                        // banExpiresIn: 60 * 60 * 24, // при желании срок бана в секундах
-                      });
-                      setUsers((prev) =>
-                        prev.map((x) =>
-                          x.id === u.id ? { ...x, banned: true } : x,
-                        ),
-                      );
-                    }
-                  }}
-                >
-                  {u.banned ? "Разблок." : "Заблок."}
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+        {/* Последние пользователи */}
+        <Card className="md:col-span-1">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>Последние пользователи</CardTitle>
+            <Link 
+              href="/admin/users" 
+              className="text-sm text-blue-600 hover:underline"
+            >
+              Все пользователи →
+            </Link>
+          </CardHeader>
+          <CardContent>
+            {data.recentUsers.length > 0 ? (
+              <div className="space-y-3">
+                {data.recentUsers.map((user) => (
+                  <Link 
+                    key={user.id} 
+                    href={`/admin/users/${user.id}`}
+                    className="flex items-center justify-between p-2 hover:bg-gray-50 rounded transition-colors"
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className={`w-2 h-2 rounded-full ${user.banned ? 'bg-red-500' : 'bg-green-500'}`}></div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {user.name || user.email?.split('@')[0] || 'Без имени'}
+                        </p>
+                        <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                      </div>
+                    </div>
+                    <div className="text-right text-xs">
+                      <div className={`px-2 py-1 rounded-full capitalize ${
+                        user.role === 'admin' ? 'bg-red-100 text-red-800' :
+                        'bg-blue-100 text-blue-800'
+                      }`}>
+                        {user.role}
+                      </div>
+                      <p className="text-muted-foreground mt-1">
+                        {new Date(user.createdAt).toLocaleDateString('ru-RU')}
+                      </p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <div className="h-[150px] flex items-center justify-center text-muted-foreground">
+                Нет пользователей
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Быстрые действия */}
+        <Card className="md:col-span-1">
+          <CardHeader>
+            <CardTitle>Быстрые действия</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <Link 
+                href="/admin/users"
+                className="flex items-center justify-center p-3 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors"
+              >
+                <Users className="w-4 h-4 mr-2" />
+                Управление пользователями
+              </Link>
+              
+              <Link 
+                href="/admin/users?banned=true"
+                className="flex items-center justify-center p-3 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 transition-colors"
+              >
+                <AlertCircle className="w-4 h-4 mr-2" />
+                Управление банами
+              </Link>
+              
+              <Link 
+                href="/admin/users?role=admin"
+                className="flex items-center justify-center p-3 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors"
+              >
+                <Shield className="w-4 h-4 mr-2" />
+                Назначить администратора
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

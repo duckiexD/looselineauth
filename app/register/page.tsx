@@ -45,7 +45,14 @@ export default function RegisterPage() {
         }),
       });
 
-      const data = await response.json();
+      let data;
+      try {
+        const text = await response.text();
+        data = text ? JSON.parse(text) : {};
+      } catch (e) {
+        console.error("Ошибка при разборе JSON:", e);
+        throw new Error("Неверный формат ответа от сервера");
+      }
 
       console.log("Response:", response.status, data);
 
@@ -56,10 +63,11 @@ export default function RegisterPage() {
         }, 1500);
       } else {
         // Обработка ошибок Better-auth
-        const errorMessage = data.error?.message || 
-                            data.message || 
-                            data.error || 
-                            "Ошибка регистрации";
+        const errorMessage = data?.error?.message || 
+                            data?.message || 
+                            data?.error || 
+                            response.statusText ||
+                            `Ошибка регистрации (${response.status})`;
         setError(errorMessage);
       }
     } catch (err: any) {

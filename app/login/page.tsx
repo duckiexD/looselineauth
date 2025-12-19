@@ -1,4 +1,3 @@
-// app/login/page.tsx
 'use client';
 
 import { useState } from 'react';
@@ -215,15 +214,31 @@ export default function LoginPage() {
           </div>
 
           <div style={{ marginBottom: '24px' }}>
-            <label style={{
-              display: 'block',
-              fontSize: '14px',
-              fontWeight: '500',
-              color: '#374151',
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
               marginBottom: '6px'
             }}>
-              Пароль
-            </label>
+              <label style={{
+                fontSize: '14px',
+                fontWeight: '500',
+                color: '#374151',
+              }}>
+                Пароль
+              </label>
+              <Link 
+                href="/forgot-password" 
+                style={{
+                  color: '#3b82f6',
+                  fontSize: '14px',
+                  textDecoration: 'none',
+                  fontWeight: '500'
+                }}
+              >
+                Забыли пароль?
+              </Link>
+            </div>
             <input
               type="password"
               required
@@ -283,7 +298,7 @@ export default function LoginPage() {
           padding: '20px',
           backgroundColor: '#f0f9ff',
           borderRadius: '8px',
-          border: '1px solid #bae6fd'  // ИСПРАВЛЕНО: закрытая строка
+          border: '1px solid #bae6fd'
         }}>
           <h3 style={{
             fontSize: '16px',
@@ -307,7 +322,7 @@ export default function LoginPage() {
                 padding: '8px 12px',
                 borderRadius: '6px',
                 marginBottom: '6px',
-                border: '1px solid #bae6fd',  // ИСПРАВЛЕНО: закрытая строка
+                border: '1px solid #bae6fd',
                 fontFamily: 'monospace',
                 fontSize: '12px'
               }}>

@@ -1,39 +1,51 @@
 // lib/auth.ts
 import { betterAuth } from "better-auth";
-import { admin } from "better-auth/plugins"; // добавляем импорт админ плагина
+import { admin } from "better-auth/plugins";
 import { Pool } from "pg";
-import { Kysely, PostgresDialect } from "kysely";
+import { PostgresDialect } from "kysely";
 
+// ❌ УДАЛИТЕ этот импорт - он не нужен в auth.ts
+// import { db } from './db';
+
+if (!process.env.BETTER_AUTH_SECRET) {
+  console.warn('BETTER_AUTH_SECRET is not set. Using a default value in development.');
+}
+
+if (!process.env.DATABASE_URL) {
+  throw new Error('DATABASE_URL is not set in environment variables');
+}
+
+// Используем dialect из db, если доступен
+// или создаем отдельный
 const dialect = new PostgresDialect({
   pool: new Pool({
     connectionString: process.env.DATABASE_URL,
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    max: 20,
+    idleTimeoutMillis: 30000,
   }),
 });
 
 export const auth = betterAuth({
   database: {
-    dialect: dialect,
+    dialect, // Передаем созданный dialect
     type: "postgres",
   },
-  
-  secret: process.env.BETTER_AUTH_SECRET!,
-  baseURL: process.env.NEXTAUTH_URL || "http://localhost:3000", 
-  
+  secret: process.env.BETTER_AUTH_SECRET,
+  baseURL: process.env.NEXTAUTH_URL || "http://localhost:3000",
   emailAndPassword: {
     enabled: true,
     minPasswordLength: 6,
   },
-  
   session: {
-    expiresIn: 60 * 60 * 24 * 7,
-    updateAge: 60 * 60 * 24,
+    expiresIn: 60 * 60 * 24 * 7, // 7 days
+    updateAge: 60 * 60 * 24, // 24 hours
   },
-
-  // добавляем плагин admin
   plugins: [
     admin({
-      defaultRole: "user",        // роль по умолчанию для новых пользователей
-      adminRoles: ["admin"],      // роли с полными правами админа
+      defaultRole: "user",
+      adminRoles: ["admin"],
     })
   ],
 });
+

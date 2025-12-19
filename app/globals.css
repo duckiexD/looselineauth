@@ -67,10 +67,20 @@
 }
 
 @layer base {
-  * {
-    @apply border;
-  }
   body {
     @apply bg-white text-gray-900 dark:bg-gray-900 dark:text-white;
+  }
+  
+  /* Опционально: границы только для форм и таблиц, если нужно */
+  input, textarea, select {
+    @apply border rounded;
+  }
+  
+  table {
+    @apply border-collapse;
+  }
+  
+  th, td {
+    @apply border border-gray-300 px-4 py-2;
   }
 }
